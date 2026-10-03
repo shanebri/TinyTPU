@@ -4,30 +4,32 @@ module processing_element #(
 ) (
     input  logic                         clk,
     input  logic                         clear,
-    input  logic                         weights_loaded,
+    input  logic                         accumulator_clear,
+    input  logic                         compute_en,
     input  logic signed [DATA_WIDTH-1:0]  a_in,
     input  logic signed [DATA_WIDTH-1:0]  b_in,
     output logic signed [DATA_WIDTH-1:0]  a_out,
     output logic signed [DATA_WIDTH-1:0]  b_out,
     output logic signed [ACC_WIDTH-1:0]   accumulator
 );
-    // b_out is also this PE's stored weight. It changes only on clear/load.
+    // Output-stationary MAC: operands move, the partial sum stays here.
     logic signed [2*DATA_WIDTH-1:0] product;
-    assign product = a_in * b_out;
+    assign product = a_in * b_in;
 
-    // Priority: synchronous clear, weight loading, then computation.
+    // Priority: synchronous reset, accumulator clear, then computation.
     // Assert clear for at least one rising edge before first use.
     always_ff @(posedge clk) begin
         if (clear) begin
             a_out       <= '0;
             b_out       <= '0;
             accumulator <= '0;
-        end else if (weights_loaded) begin
-            b_out <= b_in;
-            a_out <= '0;
-            // Preserve the accumulator; do not multiply during loading.
-        end else begin
+        end else if (accumulator_clear) begin
+            // Operand registers hold. The tile controller flushes them
+            // separately before starting a new operation.
+            accumulator <= '0;
+        end else if (compute_en) begin
             a_out       <= a_in;
+            b_out       <= b_in;
             // The signed size cast extends or truncates to ACC_WIDTH.
             accumulator <= accumulator + ACC_WIDTH'(product);
         end

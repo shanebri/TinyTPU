@@ -1,19 +1,12 @@
 // Compile tpu_pkg.sv, processing_element.sv, then this file.
 //
-// Loading: after clear, assert weights_loaded for ROWS rising edges.
-// Present one row of weights on b_in each edge, bottom row first and top
-// row last. Every column shifts independently. Deassert weights_loaded
-// to hold those weights and begin computing; b_in is then ignored.
-//
-// Computation: a_in[r] enters row r from the left and advances one column
-// per rising edge. Each PE accumulates its incoming activation times its
-// own stored weight. Column c consumes an activation c cycles after column
-// zero. Feed zeros for COLS-1 trailing cycles to drain the activation path,
-// and keep feeding zeros to retain the result. No valid/done is generated.
-//
-// matrix_c exposes the local accumulators, with no reduction across rows.
-// A full matrix-multiplication schedule/reduction is outside this module.
-// clear resets accumulators AND stored weights, so reload after clearing.
+// Output-stationary dataflow: A travels right, B travels down.
+// At enabled step t, feed A[r][t-r] and B[t-c][c], using zero for
+// out-of-range indices. Run K + ROWS + COLS - 2 enabled steps for
+// matrix_c[r][c] = sum(k=0..K-1) A[r][k] * B[k][c].
+// compute_en freezes operands and sums together; pause the input schedule
+// too. clear resets operands and sums. accumulator_clear resets only sums.
+// Flush operand registers with clear before an independent tile operation.
 module systolic_array #(
     parameter int unsigned ROWS       = tpu_pkg::ARRAY_ROWS,
     parameter int unsigned COLS       = tpu_pkg::ARRAY_COLS,
@@ -22,7 +15,8 @@ module systolic_array #(
 ) (
     input  logic                         clk,
     input  logic                         clear,
-    input  logic                         weights_loaded,
+    input  logic                         accumulator_clear,
+    input  logic                         compute_en,
     input  logic signed [DATA_WIDTH-1:0]  a_in [0:ROWS-1],
     input  logic signed [DATA_WIDTH-1:0]  b_in [0:COLS-1],
     output wire signed [ACC_WIDTH-1:0]    matrix_c [0:ROWS-1][0:COLS-1]
@@ -46,7 +40,8 @@ module systolic_array #(
                 ) pe (
                     .clk            (clk),
                     .clear          (clear),
-                    .weights_loaded (weights_loaded),
+                    .accumulator_clear (accumulator_clear),
+                    .compute_en     (compute_en),
                     .a_in           (a_bus[row][col]),
                     .b_in           (b_bus[row][col]),
                     .a_out          (a_bus[row][col+1]),
