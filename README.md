@@ -89,4 +89,30 @@ Compile SystemVerilog sources in the order listed in `rtl.f`, with
 verilator --lint-only --top-module tile_engine -f rtl.f
 ```
 
-No testbench is included yet; functional simulation remains a separate step.
+## Arty A7-100T / MicroBlaze integration
+
+`arty_top.sv` is an AXI4-Lite accelerator peripheral for your MicroBlaze
+block design, not a standalone board pin top. It wraps `tile_engine` with
+operand/result registers, a local repetition sequencer, and hardware cycle
+counters. Compile the sources in `arty.f`. You provide the UART server,
+clock/reset connections, address assignment, and FPGA build.
+
+The [integration and benchmark guide](docs/benchmarking.md) includes the
+register map, packet format, MicroBlaze adapter, Pi setup, and interpretation
+of the measurements. `firmware/tiny_tpu_server.c` is a transport-independent
+packet handler you can call from your existing UART server.
+
+`tools/benchmark.py` checks signed matrix multiplication and measures FPGA
+execution, UART round trips, NumPy CPU baselines, and an optional native C
+CPU baseline. Results include median/p95 timings and reproducible JSON.
+
+```sh
+python -m pip install -r tools/requirements.txt
+python tools/benchmark.py --port /dev/serial/by-id/YOUR_UART_DEVICE \
+    --repetitions 10000 --samples 20 --output results/pi.json
+```
+
+Run host protocol tests with `python -m unittest discover -s tests -v`.
+`tests/arty_axi_tb.sv` is a register-level simulation testbench for you to run
+in your simulator; hardware implementation and timing closure are separate
+validation steps.

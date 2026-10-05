@@ -1,0 +1,12 @@
+build/
+__pycache__/
+*.pyc
+.venv/
+.Xil/
+*.jou
+*.log
+results/
+xsim.dir/
+*.pb
+*.wdb
+dfx_runtime.txt
